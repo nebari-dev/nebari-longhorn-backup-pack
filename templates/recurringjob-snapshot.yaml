@@ -1,0 +1,21 @@
+{{- if .Values.snapshot.enabled -}}
+{{- include "nebari-longhorn-backup.validate" . -}}
+apiVersion: longhorn.io/v1beta2
+kind: RecurringJob
+metadata:
+  name: {{ include "nebari-longhorn-backup.groupName" . }}-hourly-snapshot
+  namespace: {{ .Values.longhornNamespace }}
+  labels:
+    {{- include "nebari-longhorn-backup.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  cron: {{ .Values.snapshot.cron | quote }}
+  task: snapshot
+  groups:
+    - {{ include "nebari-longhorn-backup.groupName" . }}
+  retain: {{ .Values.snapshot.retain }}
+  concurrency: {{ .Values.snapshot.concurrency }}
+{{- end }}

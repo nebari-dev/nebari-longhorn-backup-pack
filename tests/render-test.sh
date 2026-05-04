@@ -42,5 +42,20 @@ assert_eq "StorageClass recurringJobSelector contains group" \
   "$(echo "$out" | $YQ 'select(.kind == "StorageClass") | .parameters.recurringJobSelector' | grep -c '"name":"jhub"')" "1"
 
 echo
+echo "==> Hourly snapshot RecurringJob"
+assert_eq "Exactly one snapshot RecurringJob exists" \
+  "$(echo "$out" | $YQ ea '[select(.kind == "RecurringJob" and .spec.task == "snapshot")] | length')" "1"
+assert_eq "Snapshot RJ name" \
+  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .metadata.name')" "jhub-hourly-snapshot"
+assert_eq "Snapshot RJ namespace" \
+  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .metadata.namespace')" "longhorn-system"
+assert_eq "Snapshot RJ cron" \
+  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .spec.cron')" "0 * * * *"
+assert_eq "Snapshot RJ retain" \
+  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .spec.retain')" "24"
+assert_eq "Snapshot RJ groups[0]" \
+  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .spec.groups[0]')" "jhub"
+
+echo
 echo "Passed: $pass   Failed: $fail"
 [[ $fail -eq 0 ]]
