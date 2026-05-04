@@ -43,6 +43,7 @@ assert_eq "StorageClass recurringJobSelector contains group" \
 
 echo
 echo "==> Hourly snapshot RecurringJob"
+# yq ea is required: default mode evaluates per-document and returns one result per doc
 assert_eq "Exactly one snapshot RecurringJob exists" \
   "$(echo "$out" | $YQ ea '[select(.kind == "RecurringJob" and .spec.task == "snapshot")] | length')" "1"
 assert_eq "Snapshot RJ name" \
@@ -55,6 +56,21 @@ assert_eq "Snapshot RJ retain" \
   "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .spec.retain')" "24"
 assert_eq "Snapshot RJ groups[0]" \
   "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .spec.groups[0]')" "jhub"
+
+echo
+echo "==> Daily backup RecurringJob"
+assert_eq "Exactly one backup RecurringJob exists" \
+  "$(echo "$out" | $YQ ea '[select(.kind == "RecurringJob" and .spec.task == "backup")] | length')" "1"
+assert_eq "Backup RJ name" \
+  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "backup") | .metadata.name')" "jhub-daily-backup"
+assert_eq "Backup RJ namespace" \
+  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "backup") | .metadata.namespace')" "longhorn-system"
+assert_eq "Backup RJ cron" \
+  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "backup") | .spec.cron')" "0 3 * * *"
+assert_eq "Backup RJ retain" \
+  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "backup") | .spec.retain')" "30"
+assert_eq "Backup RJ groups[0]" \
+  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "backup") | .spec.groups[0]')" "jhub"
 
 echo
 echo "Passed: $pass   Failed: $fail"
