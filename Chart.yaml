@@ -1,0 +1,17 @@
+apiVersion: v2
+name: nebari-longhorn-backup
+description: Longhorn-native snapshot and backup schedule for JupyterHub user volumes (RWO and RWX). Renders one StorageClass and two RecurringJobs.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/nebari-dev/nebari-longhorn-backup-pack
+sources:
+  - https://github.com/nebari-dev/nebari-longhorn-backup-pack
+keywords:
+  - longhorn
+  - backup
+  - jupyterhub
+  - nebari
+maintainers:
+  - name: Nebari Project
+    url: https://nebari.dev

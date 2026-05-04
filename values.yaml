@@ -1,0 +1,26 @@
+# Namespace where Longhorn is installed. RecurringJobs MUST live here;
+# StorageClass is cluster-scoped so this only affects the two RecurringJobs.
+longhornNamespace: longhorn-system
+
+storageClass:
+  name: longhorn-jhub
+  numberOfReplicas: 3
+  reclaimPolicy: Delete
+  fsType: ext4
+  groupName: jhub                  # also used as the recurring-job group selector
+
+snapshot:
+  enabled: true
+  cron: "0 * * * *"                # hourly
+  retain: 24                       # 24h rolling window
+  concurrency: 5
+
+backup:
+  enabled: true
+  cron: "0 3 * * *"                # daily 03:00
+  retain: 30                       # ~1 month
+  concurrency: 3                   # don't saturate node uplink
+
+# Optional: extra labels/annotations applied to all rendered resources.
+commonLabels: {}
+commonAnnotations: {}
