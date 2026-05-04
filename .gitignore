@@ -1,0 +1,12 @@
+# Helm
+*.tgz
+charts/
+.helm/
+gh-pages/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
