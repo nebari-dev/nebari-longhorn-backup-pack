@@ -1,0 +1,16 @@
+nebari-longhorn-backup installed.
+
+The chart created:
+  - StorageClass/{{ .Values.storageClass.name }}            (cluster-scoped, auto-enrolls volumes in group "{{ include "nebari-longhorn-backup.groupName" . }}")
+  - RecurringJob/{{ include "nebari-longhorn-backup.groupName" . }}-hourly-snapshot   in {{ .Values.longhornNamespace }}, cron {{ .Values.snapshot.cron | quote }}, retain {{ .Values.snapshot.retain }}
+  - RecurringJob/{{ include "nebari-longhorn-backup.groupName" . }}-daily-backup      in {{ .Values.longhornNamespace }}, cron {{ .Values.backup.cron | quote }},   retain {{ .Values.backup.retain }}
+
+Cluster-side prerequisites that this chart does NOT manage (configure in your gitops repo):
+  - Longhorn install in namespace "{{ .Values.longhornNamespace }}"
+  - BackupTarget CR with a valid S3 backupTargetURL + credentials secret
+
+Pin downstream charts (e.g., nebari-data-science-pack) to this StorageClass:
+  jupyterhub.singleuser.storage.dynamic.storageClass: {{ .Values.storageClass.name }}
+  sharedStorage.storageClass:                       {{ .Values.storageClass.name }}
+
+See README.md for the restore runbook.

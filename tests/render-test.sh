@@ -73,5 +73,32 @@ assert_eq "Backup RJ groups[0]" \
   "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "backup") | .spec.groups[0]')" "jhub"
 
 echo
+echo "==> Non-default values (all knobs flipped)"
+out=$(render \
+  --set storageClass.name=test-sc \
+  --set storageClass.numberOfReplicas=2 \
+  --set storageClass.groupName=test-group \
+  --set snapshot.cron="*/30 * * * *" \
+  --set snapshot.retain=48 \
+  --set backup.cron="0 */6 * * *" \
+  --set backup.retain=14 \
+  --set longhornNamespace=longhorn-other)
+
+assert_eq "Custom SC name" \
+  "$(echo "$out" | $YQ 'select(.kind == "StorageClass") | .metadata.name')" "test-sc"
+assert_eq "Custom SC selector references custom group" \
+  "$(echo "$out" | $YQ 'select(.kind == "StorageClass") | .parameters.recurringJobSelector' | grep -c '"name":"test-group"')" "1"
+assert_eq "Snapshot RJ uses custom group in name" \
+  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .metadata.name')" "test-group-hourly-snapshot"
+assert_eq "Snapshot RJ uses custom namespace" \
+  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .metadata.namespace')" "longhorn-other"
+assert_eq "Snapshot RJ uses custom cron" \
+  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .spec.cron')" "*/30 * * * *"
+assert_eq "Backup RJ uses custom retain" \
+  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "backup") | .spec.retain')" "14"
+assert_eq "Group consistency: SC selector and RJ groups match" \
+  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .spec.groups[0]')" "test-group"
+
+echo
 echo "Passed: $pass   Failed: $fail"
 [[ $fail -eq 0 ]]
