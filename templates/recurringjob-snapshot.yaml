@@ -12,6 +12,7 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
+  name: {{ include "nebari-longhorn-backup.groupName" . }}-hourly-snapshot
   cron: {{ .Values.snapshot.cron | quote }}
   task: snapshot
   groups:

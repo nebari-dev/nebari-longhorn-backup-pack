@@ -56,6 +56,8 @@ assert_eq "Snapshot RJ retain" \
   "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .spec.retain')" "24"
 assert_eq "Snapshot RJ groups[0]" \
   "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .spec.groups[0]')" "jhub"
+assert_eq "Snapshot RJ spec.name == metadata.name" \
+  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .spec.name')" "jhub-hourly-snapshot"
 
 echo
 echo "==> Daily backup RecurringJob"
@@ -71,6 +73,8 @@ assert_eq "Backup RJ retain" \
   "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "backup") | .spec.retain')" "30"
 assert_eq "Backup RJ groups[0]" \
   "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "backup") | .spec.groups[0]')" "jhub"
+assert_eq "Backup RJ spec.name == metadata.name" \
+  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "backup") | .spec.name')" "jhub-daily-backup"
 
 echo
 echo "==> Non-default values (all knobs flipped)"
@@ -98,6 +102,10 @@ assert_eq "Backup RJ uses custom retain" \
   "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "backup") | .spec.retain')" "14"
 assert_eq "Group consistency: SC selector and RJ groups match" \
   "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .spec.groups[0]')" "test-group"
+assert_eq "Custom group: snapshot RJ spec.name follows" \
+  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .spec.name')" "test-group-hourly-snapshot"
+assert_eq "Custom group: backup RJ spec.name follows" \
+  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "backup") | .spec.name')" "test-group-daily-backup"
 
 echo
 echo "Passed: $pass   Failed: $fail"
