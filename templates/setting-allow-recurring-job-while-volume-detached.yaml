@@ -1,0 +1,28 @@
+{{- if ne (kindOf .Values.clusterSettings.allowRecurringJobWhileVolumeDetached) "invalid" }}
+# Longhorn cluster-wide Setting controlling whether RecurringJobs (snapshot
+# and backup) act on volumes that are currently detached. With Longhorn's
+# default ("false"), detached volumes are silently skipped — meaning a user
+# PVC that is not actively mounted at the cron tick produces no snapshot.
+#
+# This chart defaults the setting to "true" because its purpose is reliable,
+# scheduled protection of JupyterHub user volumes (which are routinely
+# detached when servers idle out). When "true", Longhorn auto-attaches the
+# volume long enough to take the snapshot/backup, then detaches it again.
+#
+# NOTE: This is a cluster-wide setting. It affects every RecurringJob on
+# the cluster, not just the ones rendered by this chart. Set
+# clusterSettings.allowRecurringJobWhileVolumeDetached: null to opt out of
+# managing this setting from the chart.
+apiVersion: longhorn.io/v1beta2
+kind: Setting
+metadata:
+  name: allow-recurring-job-while-volume-detached
+  namespace: {{ .Values.longhornNamespace }}
+  labels:
+    {{- include "nebari-longhorn-backup.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+value: {{ .Values.clusterSettings.allowRecurringJobWhileVolumeDetached | quote }}
+{{- end }}

@@ -77,6 +77,29 @@ assert_eq "Backup RJ spec.name == metadata.name" \
   "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "backup") | .spec.name')" "jhub-daily-backup"
 
 echo
+echo "==> Setting/allow-recurring-job-while-volume-detached"
+assert_eq "Default: Setting CR rendered exactly once" \
+  "$(echo "$out" | $YQ ea '[select(.kind == "Setting" and .metadata.name == "allow-recurring-job-while-volume-detached")] | length')" "1"
+assert_eq "Default: Setting CR namespace" \
+  "$(echo "$out" | $YQ 'select(.kind == "Setting" and .metadata.name == "allow-recurring-job-while-volume-detached") | .metadata.namespace')" "longhorn-system"
+assert_eq "Default: Setting CR value is \"true\"" \
+  "$(echo "$out" | $YQ 'select(.kind == "Setting" and .metadata.name == "allow-recurring-job-while-volume-detached") | .value')" "true"
+
+echo
+echo "==> Setting opted out via null"
+out_null=$(render --set clusterSettings.allowRecurringJobWhileVolumeDetached=null)
+assert_eq "Null: no Setting CR rendered" \
+  "$(echo "$out_null" | $YQ ea '[select(.kind == "Setting" and .metadata.name == "allow-recurring-job-while-volume-detached")] | length')" "0"
+
+echo
+echo "==> Setting explicitly false (Longhorn stock behavior, but managed by chart)"
+out_false=$(render --set clusterSettings.allowRecurringJobWhileVolumeDetached=false)
+assert_eq "False: Setting CR rendered" \
+  "$(echo "$out_false" | $YQ ea '[select(.kind == "Setting" and .metadata.name == "allow-recurring-job-while-volume-detached")] | length')" "1"
+assert_eq "False: Setting CR value is \"false\"" \
+  "$(echo "$out_false" | $YQ 'select(.kind == "Setting" and .metadata.name == "allow-recurring-job-while-volume-detached") | .value')" "false"
+
+echo
 echo "==> Non-default values (all knobs flipped)"
 out=$(render \
   --set storageClass.name=test-sc \
