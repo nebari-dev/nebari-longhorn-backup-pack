@@ -21,6 +21,18 @@ backup:
   retain: 30                       # ~1 month
   concurrency: 3                   # don't saturate node uplink
 
+# Cluster-wide Longhorn settings managed by this chart.
+#
+# allowRecurringJobWhileVolumeDetached: with Longhorn's stock default ("false"),
+# RecurringJobs silently skip detached volumes. JupyterHub user PVCs are routinely
+# detached when servers idle out, so the chart defaults this to "true" — Longhorn
+# briefly auto-attaches the volume to take the snapshot/backup, then detaches it
+# again. Set to null to leave Longhorn's existing setting untouched.
+#
+# NOTE: cluster-wide. Affects every RecurringJob on the cluster, not just this chart's.
+clusterSettings:
+  allowRecurringJobWhileVolumeDetached: true
+
 # Optional: extra labels/annotations applied to all rendered resources.
 commonLabels: {}
 commonAnnotations: {}

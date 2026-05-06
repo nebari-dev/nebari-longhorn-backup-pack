@@ -4,6 +4,9 @@ The chart created:
   - StorageClass/{{ .Values.storageClass.name }}            (cluster-scoped, auto-enrolls volumes in group "{{ include "nebari-longhorn-backup.groupName" . }}")
   - RecurringJob/{{ include "nebari-longhorn-backup.groupName" . }}-hourly-snapshot   in {{ .Values.longhornNamespace }}, cron {{ .Values.snapshot.cron | quote }}, retain {{ .Values.snapshot.retain }}
   - RecurringJob/{{ include "nebari-longhorn-backup.groupName" . }}-daily-backup      in {{ .Values.longhornNamespace }}, cron {{ .Values.backup.cron | quote }},   retain {{ .Values.backup.retain }}
+{{- if ne (kindOf .Values.clusterSettings.allowRecurringJobWhileVolumeDetached) "invalid" }}
+  - Setting/allow-recurring-job-while-volume-detached={{ .Values.clusterSettings.allowRecurringJobWhileVolumeDetached }}   (cluster-wide; affects all RecurringJobs)
+{{- end }}
 
 Cluster-side prerequisites that this chart does NOT manage (configure in your gitops repo):
   - Longhorn install in namespace "{{ .Values.longhornNamespace }}"
