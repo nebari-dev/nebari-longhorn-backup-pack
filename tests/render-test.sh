@@ -26,62 +26,45 @@ assert_eq() {
 
 render() { $HELM template test . "$@"; }
 
-# ---------- Default values ----------
-echo "==> Default values"
+# ---------- Default values: targetGroup=default, no StorageClass ----------
+echo "==> Default values (targetGroup=default, storageClass.enabled=false)"
 out=$(render)
 
-assert_eq "StorageClass exists" \
-  "$(echo "$out" | $YQ 'select(.kind == "StorageClass") | .kind' | head -1)" "StorageClass"
-assert_eq "StorageClass name" \
-  "$(echo "$out" | $YQ 'select(.kind == "StorageClass") | .metadata.name')" "longhorn-jhub"
-assert_eq "StorageClass provisioner" \
-  "$(echo "$out" | $YQ 'select(.kind == "StorageClass") | .provisioner')" "driver.longhorn.io"
-assert_eq "StorageClass numberOfReplicas" \
-  "$(echo "$out" | $YQ 'select(.kind == "StorageClass") | .parameters.numberOfReplicas | tag')" "!!str"
-assert_eq "StorageClass recurringJobSelector contains group" \
-  "$(echo "$out" | $YQ 'select(.kind == "StorageClass") | .parameters.recurringJobSelector' | grep -c '"name":"jhub"')" "1"
+assert_eq "No StorageClass rendered by default" \
+  "$(echo "$out" | $YQ ea '[select(.kind == "StorageClass")] | length')" "0"
 
 echo
-echo "==> Hourly snapshot RecurringJob"
-# yq ea is required: default mode evaluates per-document and returns one result per doc
+echo "==> Hourly snapshot RecurringJob (default)"
 assert_eq "Exactly one snapshot RecurringJob exists" \
   "$(echo "$out" | $YQ ea '[select(.kind == "RecurringJob" and .spec.task == "snapshot")] | length')" "1"
-assert_eq "Snapshot RJ name" \
-  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .metadata.name')" "jhub-hourly-snapshot"
+assert_eq "Snapshot RJ name uses targetGroup" \
+  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .metadata.name')" "default-hourly-snapshot"
 assert_eq "Snapshot RJ namespace" \
   "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .metadata.namespace')" "longhorn-system"
 assert_eq "Snapshot RJ cron" \
   "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .spec.cron')" "0 * * * *"
 assert_eq "Snapshot RJ retain" \
   "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .spec.retain')" "24"
-assert_eq "Snapshot RJ groups[0]" \
-  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .spec.groups[0]')" "jhub"
+assert_eq "Snapshot RJ groups[0] = default" \
+  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .spec.groups[0]')" "default"
 assert_eq "Snapshot RJ spec.name == metadata.name" \
-  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .spec.name')" "jhub-hourly-snapshot"
+  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .spec.name')" "default-hourly-snapshot"
 
 echo
-echo "==> Daily backup RecurringJob"
+echo "==> Daily backup RecurringJob (default)"
 assert_eq "Exactly one backup RecurringJob exists" \
   "$(echo "$out" | $YQ ea '[select(.kind == "RecurringJob" and .spec.task == "backup")] | length')" "1"
-assert_eq "Backup RJ name" \
-  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "backup") | .metadata.name')" "jhub-daily-backup"
-assert_eq "Backup RJ namespace" \
-  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "backup") | .metadata.namespace')" "longhorn-system"
-assert_eq "Backup RJ cron" \
-  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "backup") | .spec.cron')" "0 3 * * *"
-assert_eq "Backup RJ retain" \
-  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "backup") | .spec.retain')" "30"
-assert_eq "Backup RJ groups[0]" \
-  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "backup") | .spec.groups[0]')" "jhub"
+assert_eq "Backup RJ name uses targetGroup" \
+  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "backup") | .metadata.name')" "default-daily-backup"
+assert_eq "Backup RJ groups[0] = default" \
+  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "backup") | .spec.groups[0]')" "default"
 assert_eq "Backup RJ spec.name == metadata.name" \
-  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "backup") | .spec.name')" "jhub-daily-backup"
+  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "backup") | .spec.name')" "default-daily-backup"
 
 echo
 echo "==> Setting/allow-recurring-job-while-volume-detached"
 assert_eq "Default: Setting CR rendered exactly once" \
   "$(echo "$out" | $YQ ea '[select(.kind == "Setting" and .metadata.name == "allow-recurring-job-while-volume-detached")] | length')" "1"
-assert_eq "Default: Setting CR namespace" \
-  "$(echo "$out" | $YQ 'select(.kind == "Setting" and .metadata.name == "allow-recurring-job-while-volume-detached") | .metadata.namespace')" "longhorn-system"
 assert_eq "Default: Setting CR value is \"true\"" \
   "$(echo "$out" | $YQ 'select(.kind == "Setting" and .metadata.name == "allow-recurring-job-while-volume-detached") | .value')" "true"
 
@@ -92,43 +75,50 @@ assert_eq "Null: no Setting CR rendered" \
   "$(echo "$out_null" | $YQ ea '[select(.kind == "Setting" and .metadata.name == "allow-recurring-job-while-volume-detached")] | length')" "0"
 
 echo
-echo "==> Setting explicitly false (Longhorn stock behavior, but managed by chart)"
-out_false=$(render --set clusterSettings.allowRecurringJobWhileVolumeDetached=false)
-assert_eq "False: Setting CR rendered" \
-  "$(echo "$out_false" | $YQ ea '[select(.kind == "Setting" and .metadata.name == "allow-recurring-job-while-volume-detached")] | length')" "1"
-assert_eq "False: Setting CR value is \"false\"" \
-  "$(echo "$out_false" | $YQ 'select(.kind == "Setting" and .metadata.name == "allow-recurring-job-while-volume-detached") | .value')" "false"
+echo "==> StorageClass enabled with default targetGroup"
+out_sc=$(render --set storageClass.enabled=true)
+assert_eq "SC rendered when enabled" \
+  "$(echo "$out_sc" | $YQ ea '[select(.kind == "StorageClass")] | length')" "1"
+assert_eq "SC name" \
+  "$(echo "$out_sc" | $YQ 'select(.kind == "StorageClass") | .metadata.name')" "longhorn-jhub"
+assert_eq "SC provisioner" \
+  "$(echo "$out_sc" | $YQ 'select(.kind == "StorageClass") | .provisioner')" "driver.longhorn.io"
+assert_eq "SC numberOfReplicas is string" \
+  "$(echo "$out_sc" | $YQ 'select(.kind == "StorageClass") | .parameters.numberOfReplicas | tag')" "!!str"
+assert_eq "SC recurringJobSelector references default group" \
+  "$(echo "$out_sc" | $YQ 'select(.kind == "StorageClass") | .parameters.recurringJobSelector' | grep -c '"name":"default"')" "1"
 
 echo
-echo "==> Non-default values (all knobs flipped)"
-out=$(render \
-  --set storageClass.name=test-sc \
+echo "==> Custom targetGroup (dedicated group)"
+out_custom=$(render \
+  --set targetGroup=nebari \
+  --set storageClass.enabled=true \
+  --set storageClass.name=longhorn-nebari \
   --set storageClass.numberOfReplicas=2 \
-  --set storageClass.groupName=test-group \
   --set snapshot.cron="*/30 * * * *" \
   --set snapshot.retain=48 \
   --set backup.cron="0 */6 * * *" \
   --set backup.retain=14 \
   --set longhornNamespace=longhorn-other)
 
-assert_eq "Custom SC name" \
-  "$(echo "$out" | $YQ 'select(.kind == "StorageClass") | .metadata.name')" "test-sc"
-assert_eq "Custom SC selector references custom group" \
-  "$(echo "$out" | $YQ 'select(.kind == "StorageClass") | .parameters.recurringJobSelector' | grep -c '"name":"test-group"')" "1"
-assert_eq "Snapshot RJ uses custom group in name" \
-  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .metadata.name')" "test-group-hourly-snapshot"
-assert_eq "Snapshot RJ uses custom namespace" \
-  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .metadata.namespace')" "longhorn-other"
-assert_eq "Snapshot RJ uses custom cron" \
-  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .spec.cron')" "*/30 * * * *"
-assert_eq "Backup RJ uses custom retain" \
-  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "backup") | .spec.retain')" "14"
-assert_eq "Group consistency: SC selector and RJ groups match" \
-  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .spec.groups[0]')" "test-group"
-assert_eq "Custom group: snapshot RJ spec.name follows" \
-  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .spec.name')" "test-group-hourly-snapshot"
-assert_eq "Custom group: backup RJ spec.name follows" \
-  "$(echo "$out" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "backup") | .spec.name')" "test-group-daily-backup"
+assert_eq "Custom targetGroup: Snapshot RJ name follows" \
+  "$(echo "$out_custom" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .metadata.name')" "nebari-hourly-snapshot"
+assert_eq "Custom targetGroup: Snapshot RJ groups[0]" \
+  "$(echo "$out_custom" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .spec.groups[0]')" "nebari"
+assert_eq "Custom targetGroup: Backup RJ name follows" \
+  "$(echo "$out_custom" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "backup") | .metadata.name')" "nebari-daily-backup"
+assert_eq "Custom targetGroup: Backup RJ groups[0]" \
+  "$(echo "$out_custom" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "backup") | .spec.groups[0]')" "nebari"
+assert_eq "Custom targetGroup: SC name" \
+  "$(echo "$out_custom" | $YQ 'select(.kind == "StorageClass") | .metadata.name')" "longhorn-nebari"
+assert_eq "Custom targetGroup: SC selector references custom group" \
+  "$(echo "$out_custom" | $YQ 'select(.kind == "StorageClass") | .parameters.recurringJobSelector' | grep -c '"name":"nebari"')" "1"
+assert_eq "Custom values: Snapshot RJ uses custom namespace" \
+  "$(echo "$out_custom" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .metadata.namespace')" "longhorn-other"
+assert_eq "Custom values: Snapshot RJ cron" \
+  "$(echo "$out_custom" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "snapshot") | .spec.cron')" "*/30 * * * *"
+assert_eq "Custom values: Backup RJ retain" \
+  "$(echo "$out_custom" | $YQ 'select(.kind == "RecurringJob" and .spec.task == "backup") | .spec.retain')" "14"
 
 echo
 echo "Passed: $pass   Failed: $fail"

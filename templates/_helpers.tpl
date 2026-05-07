@@ -20,9 +20,10 @@ app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end -}}
 
 {{/*
-Group name shared by both RecurringJobs and the StorageClass selector.
-Single source of truth — referenced from values.storageClass.groupName.
+Longhorn recurring-job-group these jobs target.
+Single source of truth — referenced by RecurringJobs and (when enabled) the
+paired StorageClass's recurringJobSelector parameter.
 */}}
-{{- define "nebari-longhorn-backup.groupName" -}}
-{{- required "storageClass.groupName must be set" .Values.storageClass.groupName -}}
+{{- define "nebari-longhorn-backup.targetGroup" -}}
+{{- required "targetGroup must be set" .Values.targetGroup -}}
 {{- end -}}

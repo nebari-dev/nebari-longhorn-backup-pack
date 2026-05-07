@@ -1,3 +1,4 @@
+{{- if .Values.storageClass.enabled }}
 {{- include "nebari-longhorn-backup.validate" . -}}
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
@@ -18,4 +19,5 @@ parameters:
   staleReplicaTimeout: "30"
   fsType: {{ .Values.storageClass.fsType | quote }}
   recurringJobSelector: |
-    [{"name":{{ include "nebari-longhorn-backup.groupName" . | quote }},"isGroup":true}]
+    [{"name":{{ include "nebari-longhorn-backup.targetGroup" . | quote }},"isGroup":true}]
+{{- end }}

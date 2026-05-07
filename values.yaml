@@ -1,13 +1,28 @@
-# Namespace where Longhorn is installed. RecurringJobs MUST live here;
-# StorageClass is cluster-scoped so this only affects the two RecurringJobs.
+# Namespace where Longhorn is installed. RecurringJobs MUST live here.
 longhornNamespace: longhorn-system
 
+# Longhorn recurring-job-group these jobs target.
+#
+# Volumes whose StorageClass has no `recurringJobSelector` parameter are
+# auto-labeled by Longhorn with `recurring-job-group.longhorn.io/default=enabled`.
+# Targeting `default` therefore covers every volume on the cluster that hasn't
+# been opted into a more specific group — which for a Nebari deployment is
+# usually exactly what you want (user home dirs, hub state, etc.).
+#
+# Use a dedicated group name (e.g. `nebari`) plus `storageClass.enabled: true`
+# below if you want the chart to provide its own paired StorageClass.
+targetGroup: default
+
+# Optional paired StorageClass that auto-enrolls its volumes into `targetGroup`
+# via the `recurringJobSelector` parameter. Disabled by default because, when
+# `targetGroup: default`, the cluster's default StorageClass already covers
+# every volume — emitting a second SC adds no value.
 storageClass:
+  enabled: false
   name: longhorn-jhub
   numberOfReplicas: 3
   reclaimPolicy: Delete
   fsType: ext4
-  groupName: jhub                  # also used as the recurring-job group selector
 
 snapshot:
   enabled: true

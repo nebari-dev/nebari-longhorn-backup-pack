@@ -1,19 +1,30 @@
 nebari-longhorn-backup installed.
 
 The chart created:
-  - StorageClass/{{ .Values.storageClass.name }}            (cluster-scoped, auto-enrolls volumes in group "{{ include "nebari-longhorn-backup.groupName" . }}")
-  - RecurringJob/{{ include "nebari-longhorn-backup.groupName" . }}-hourly-snapshot   in {{ .Values.longhornNamespace }}, cron {{ .Values.snapshot.cron | quote }}, retain {{ .Values.snapshot.retain }}
-  - RecurringJob/{{ include "nebari-longhorn-backup.groupName" . }}-daily-backup      in {{ .Values.longhornNamespace }}, cron {{ .Values.backup.cron | quote }},   retain {{ .Values.backup.retain }}
+{{- if .Values.storageClass.enabled }}
+  - StorageClass/{{ .Values.storageClass.name }}            (cluster-scoped, auto-enrolls volumes in group "{{ include "nebari-longhorn-backup.targetGroup" . }}")
+{{- end }}
+  - RecurringJob/{{ include "nebari-longhorn-backup.targetGroup" . }}-hourly-snapshot   in {{ .Values.longhornNamespace }}, cron {{ .Values.snapshot.cron | quote }}, retain {{ .Values.snapshot.retain }}
+  - RecurringJob/{{ include "nebari-longhorn-backup.targetGroup" . }}-daily-backup      in {{ .Values.longhornNamespace }}, cron {{ .Values.backup.cron | quote }},   retain {{ .Values.backup.retain }}
 {{- if ne (kindOf .Values.clusterSettings.allowRecurringJobWhileVolumeDetached) "invalid" }}
   - Setting/allow-recurring-job-while-volume-detached={{ .Values.clusterSettings.allowRecurringJobWhileVolumeDetached }}   (cluster-wide; affects all RecurringJobs)
+{{- end }}
+
+These RecurringJobs target Longhorn group "{{ include "nebari-longhorn-backup.targetGroup" . }}".
+{{- if eq (include "nebari-longhorn-backup.targetGroup" .) "default" }}
+With the default targetGroup, the chart covers every Longhorn volume that
+hasn't been opted into a more specific recurring-job-group — i.e. anything
+provisioned by a StorageClass without a `recurringJobSelector` parameter.
+{{- else }}
+Only volumes carrying the label
+  recurring-job-group.longhorn.io/{{ include "nebari-longhorn-backup.targetGroup" . }}=enabled
+will be snapshotted/backed up. Pin downstream charts to a StorageClass whose
+parameters include `recurringJobSelector: [{"name":"{{ include "nebari-longhorn-backup.targetGroup" . }}","isGroup":true}]`
+(e.g. by enabling `storageClass.enabled: true` in this chart's values).
 {{- end }}
 
 Cluster-side prerequisites that this chart does NOT manage (configure in your gitops repo):
   - Longhorn install in namespace "{{ .Values.longhornNamespace }}"
   - BackupTarget CR with a valid S3 backupTargetURL + credentials secret
-
-Pin downstream charts (e.g., nebari-data-science-pack) to this StorageClass:
-  jupyterhub.singleuser.storage.dynamic.storageClass: {{ .Values.storageClass.name }}
-  sharedStorage.storageClass:                       {{ .Values.storageClass.name }}
 
 See README.md for the restore runbook.

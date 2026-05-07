@@ -22,9 +22,11 @@ Fails the render with a clear message instead of producing invalid YAML.
 {{- fail (printf "backup.retain must be > 0 (got %d)" (int .Values.backup.retain)) -}}
 {{- end -}}
 
-{{- /* numberOfReplicas in {1,2,3} */ -}}
+{{- /* numberOfReplicas in {1,2,3} — only applies when the chart's StorageClass is enabled */ -}}
+{{- if .Values.storageClass.enabled -}}
 {{- if not (has (int .Values.storageClass.numberOfReplicas) (list 1 2 3)) -}}
 {{- fail (printf "storageClass.numberOfReplicas must be 1, 2, or 3 (got %d)" (int .Values.storageClass.numberOfReplicas)) -}}
+{{- end -}}
 {{- end -}}
 
 {{- end -}}

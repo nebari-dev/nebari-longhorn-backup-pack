@@ -1,14 +1,22 @@
 # nebari-longhorn-backup
 
-Longhorn-native snapshot and backup configuration for JupyterHub user volumes (RWO and RWX). One `StorageClass` and two `RecurringJob`s — nothing else. Designed to be installed alongside any Helm chart that provisions Longhorn PVCs and pinned to this storage class.
+Longhorn-native snapshot and backup configuration for JupyterHub user volumes (RWO and RWX). Two `RecurringJob`s, one cluster-wide `Setting`, and (optionally) a paired `StorageClass` — nothing else.
 
 ## What it does
 
 | Resource | Purpose | Schedule (defaults) | Retention |
 |---|---|---|---|
-| `StorageClass/longhorn-jhub` | Auto-enrolls every PVC provisioned through it into the recurring-job group `jhub` (via `recurringJobSelector`). | n/a | n/a |
-| `RecurringJob/jhub-hourly-snapshot` | In-cluster CoW snapshot. Fast, RPO ≈ 1h, no S3 traffic. | `0 * * * *` | 24 (rolling 24h) |
-| `RecurringJob/jhub-daily-backup` | Snapshot + stream blocks to the BackupTarget S3 bucket. Durable, off-cluster. | `0 3 * * *` | 30 (rolling 30 days) |
+| `RecurringJob/default-hourly-snapshot` | In-cluster CoW snapshot. Fast, RPO ≈ 1h, no S3 traffic. | `0 * * * *` | 24 (rolling 24h) |
+| `RecurringJob/default-daily-backup` | Snapshot + stream blocks to the BackupTarget S3 bucket. Durable, off-cluster. | `0 3 * * *` | 30 (rolling 30 days) |
+| `Setting/allow-recurring-job-while-volume-detached` | Makes RecurringJobs auto-attach detached volumes long enough to take the snapshot/backup. | n/a | n/a |
+| `StorageClass/<name>` *(opt-in)* | Auto-enrolls every PVC provisioned through it into a custom recurring-job-group. Disabled by default. | n/a | n/a |
+
+## Coverage model
+
+The chart's RecurringJobs target a Longhorn recurring-job-group named by `targetGroup` (default: `default`).
+
+- **`targetGroup: default`** (the default) — covers every Longhorn volume on the cluster that hasn't been opted into a more specific group. Longhorn auto-labels volumes provisioned by a StorageClass without a `recurringJobSelector` parameter as `recurring-job-group.longhorn.io/default=enabled`, so this matches the cluster's plain default `longhorn` SC and any other SC that doesn't override it. No paired SC is needed; the chart's own SC stays disabled.
+- **Custom group (e.g. `targetGroup: nebari`)** — covers only volumes carrying the matching `recurring-job-group.longhorn.io/<name>=enabled` label. To get that label automatically, enable the chart's paired StorageClass (`storageClass.enabled: true`) — its `recurringJobSelector` parameter does the labeling at provisioning time. Useful when you want to scope protection to a subset of workloads.
 
 ## Prerequisites (cluster-side, NOT managed by this chart)
 
@@ -26,9 +34,19 @@ helm install backup nebari-longhorn-backup/nebari-longhorn-backup \
 
 Or via ArgoCD — see the gitops example in https://github.com/openteams-ai/NIC-argocd-tyler-dev/blob/main/base/apps/longhorn-backup.yaml.
 
-## Pin downstream charts
+## Optional: dedicated group with paired StorageClass
 
-After installing, configure your stateful charts to use the new StorageClass:
+When the cluster's default SC also serves workloads you don't want to back up (e.g. ephemeral CI volumes), scope the chart to a dedicated group:
+
+```yaml
+targetGroup: nebari
+storageClass:
+  enabled: true
+  name: longhorn-nebari
+  numberOfReplicas: 3
+```
+
+Then pin downstream charts to the paired SC:
 
 ```yaml
 # nebari-data-science-pack values
@@ -36,10 +54,10 @@ jupyterhub:
   singleuser:
     storage:
       dynamic:
-        storageClass: longhorn-jhub
+        storageClass: longhorn-nebari
 sharedStorage:
   enabled: true
-  storageClass: longhorn-jhub
+  storageClass: longhorn-nebari
   size: 10Gi
   accessModes: [ReadWriteMany]
 ```
@@ -50,14 +68,16 @@ See [`values.yaml`](./values.yaml) for the full surface. Key knobs:
 
 | Path | Default | Notes |
 |---|---|---|
-| `storageClass.name` | `longhorn-jhub` | The StorageClass other charts pin to. |
-| `storageClass.groupName` | `jhub` | Single source of truth — referenced by both RecurringJobs and the SC's `recurringJobSelector`. |
-| `storageClass.numberOfReplicas` | `3` | Longhorn replication factor. Must be 1, 2, or 3. |
+| `targetGroup` | `default` | Longhorn recurring-job-group these jobs target. `default` covers every volume from a SC without `recurringJobSelector`. |
+| `storageClass.enabled` | `false` | Render a paired StorageClass that auto-enrolls volumes into `targetGroup`. |
+| `storageClass.name` | `longhorn-jhub` | Name of the paired SC (only when enabled). |
+| `storageClass.numberOfReplicas` | `3` | Longhorn replication factor on the paired SC. Must be 1, 2, or 3. |
 | `snapshot.cron` / `snapshot.retain` | `0 * * * *` / `24` | Hourly snapshot. |
 | `backup.cron` / `backup.retain` | `0 3 * * *` / `30` | Daily backup. |
-| `longhornNamespace` | `longhorn-system` | Where the RecurringJobs are placed. |
+| `clusterSettings.allowRecurringJobWhileVolumeDetached` | `true` | Cluster-wide Longhorn setting: snapshots fire on detached volumes (chart auto-attaches). Set to `null` to leave Longhorn's existing value untouched. |
+| `longhornNamespace` | `longhorn-system` | Where the RecurringJobs and Setting are placed. |
 
-Validation guards run at render time: invalid cron expressions, non-positive retention, or `numberOfReplicas` outside `{1,2,3}` cause `helm template` to fail with a clear message.
+Validation guards run at render time: invalid cron expressions, non-positive retention, or (when SC is enabled) `numberOfReplicas` outside `{1,2,3}` cause `helm template` to fail with a clear message.
 
 ## Restore runbook
 
@@ -80,7 +100,7 @@ kubectl -n longhorn-system get backups.longhorn.io \
 BACKUP=<backup-name-from-list>
 
 # 4. Restore from the backup into a new volume via the Longhorn UI:
-#    Backup → Restore → name=${VOL}-restored → Storage Class=longhorn-jhub
+#    Backup → Restore → name=${VOL}-restored → Storage Class=<your cluster default, e.g. longhorn>
 #    Then repoint the PVC at the restored volume:
 kubectl -n jupyterhub patch pvc $PVC --type=merge -p "{\"spec\":{\"volumeName\":\"${VOL}-restored\"}}"
 
@@ -108,7 +128,7 @@ metadata:
 spec:
   accessModes: [ReadWriteOnce]
   resources: { requests: { storage: 10Gi } }
-  storageClassName: longhorn-jhub
+  storageClassName: longhorn
   volumeName: <restored-volume-name>
 EOF
 
