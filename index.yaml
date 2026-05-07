@@ -1,0 +1,28 @@
+apiVersion: v1
+entries:
+  nebari-longhorn-backup:
+  - apiVersion: v2
+    appVersion: 0.3.0
+    created: "2026-05-07T20:53:31.840960341Z"
+    description: Longhorn-native snapshot and backup schedule. Targets the cluster's
+      default StorageClass via the Longhorn `default` recurring-job-group. Renders
+      two RecurringJobs and a cluster-wide Setting that lets snapshots fire on detached
+      volumes.
+    digest: 608e8df81a1f464eb9cc15fe949a3b421ad2646bd3a5d12b06176fdab5e90f6d
+    home: https://github.com/nebari-dev/nebari-longhorn-backup-pack
+    keywords:
+    - longhorn
+    - backup
+    - jupyterhub
+    - nebari
+    maintainers:
+    - name: Nebari Project
+      url: https://nebari.dev
+    name: nebari-longhorn-backup
+    sources:
+    - https://github.com/nebari-dev/nebari-longhorn-backup-pack
+    type: application
+    urls:
+    - https://github.com/nebari-dev/nebari-longhorn-backup-pack/releases/download/nebari-longhorn-backup-0.3.0/nebari-longhorn-backup-0.3.0.tgz
+    version: 0.3.0
+generated: "2026-05-07T20:53:31.840450545Z"
