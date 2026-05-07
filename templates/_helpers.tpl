@@ -18,11 +18,3 @@ app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{ toYaml . }}
 {{- end }}
 {{- end -}}
-
-{{/*
-Group name shared by both RecurringJobs and the StorageClass selector.
-Single source of truth — referenced from values.storageClass.groupName.
-*/}}
-{{- define "nebari-longhorn-backup.groupName" -}}
-{{- required "storageClass.groupName must be set" .Values.storageClass.groupName -}}
-{{- end -}}

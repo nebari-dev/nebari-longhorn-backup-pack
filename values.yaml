@@ -1,14 +1,12 @@
-# Namespace where Longhorn is installed. RecurringJobs MUST live here;
-# StorageClass is cluster-scoped so this only affects the two RecurringJobs.
+# Namespace where Longhorn is installed. RecurringJobs MUST live here.
 longhornNamespace: longhorn-system
 
-storageClass:
-  name: longhorn-jhub
-  numberOfReplicas: 3
-  reclaimPolicy: Delete
-  fsType: ext4
-  groupName: jhub                  # also used as the recurring-job group selector
-
+# This chart targets Longhorn's `default` recurring-job-group, which auto-includes
+# every volume on the cluster whose StorageClass has no `recurringJobSelector`
+# parameter (i.e., the cluster's default `longhorn` StorageClass and anything
+# that inherits from it). To scope protection to a subset of workloads, run
+# multiple releases of this chart with different group targets — but doing so
+# requires changes outside this chart's surface.
 snapshot:
   enabled: true
   cron: "0 * * * *"                # hourly

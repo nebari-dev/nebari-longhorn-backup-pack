@@ -3,7 +3,7 @@
 apiVersion: longhorn.io/v1beta2
 kind: RecurringJob
 metadata:
-  name: {{ include "nebari-longhorn-backup.groupName" . }}-daily-backup
+  name: default-daily-backup
   namespace: {{ .Values.longhornNamespace }}
   labels:
     {{- include "nebari-longhorn-backup.labels" . | nindent 4 }}
@@ -12,11 +12,11 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  name: {{ include "nebari-longhorn-backup.groupName" . }}-daily-backup
+  name: default-daily-backup
   cron: {{ .Values.backup.cron | quote }}
   task: backup
   groups:
-    - {{ include "nebari-longhorn-backup.groupName" . }}
+    - default
   retain: {{ .Values.backup.retain }}
   concurrency: {{ .Values.backup.concurrency }}
 {{- end }}
