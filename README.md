@@ -30,7 +30,7 @@ helm install backup nebari-longhorn-backup/nebari-longhorn-backup \
   --namespace longhorn-system
 ```
 
-Or via ArgoCD — see the gitops example in https://github.com/openteams-ai/NIC-argocd-tyler-dev/blob/main/base/apps/longhorn-backup.yaml.
+Or via ArgoCD, with a standard Application pointing at this chart's published Helm repo.
 
 ## Values
 
@@ -45,73 +45,112 @@ See [`values.yaml`](./values.yaml) for the full surface.
 
 Validation guards run at render time: invalid cron expressions or non-positive retention cause `helm template` to fail with a clear message.
 
-## Restore runbook
+## Restoring from a backup
 
-### Scenario A — restore one user's PVC, same cluster
+This pack only schedules backups — restore is a Longhorn operation. The steps below use the Longhorn UI for both RWO (e.g. user home directories, hub DB) and RWX (shared storage) volumes.
 
-```bash
-USER=tpotts
+### Open the Longhorn UI
 
-# 1. Stop the user's server so the PVC can be unbound.
-kubectl -n jupyterhub get pod -l hub.jupyter.org/username=$USER -o name | xargs -r kubectl delete --wait=true
-
-# 2. Find the Longhorn volume name for that PVC.
-PVC=claim-$USER
-VOL=$(kubectl -n jupyterhub get pvc $PVC -o jsonpath='{.spec.volumeName}')
-
-# 3. List backups for the volume, pick a target.
-kubectl -n longhorn-system get backups.longhorn.io \
-  -l backup-volume=$VOL \
-  --sort-by=.metadata.creationTimestamp
-BACKUP=<backup-name-from-list>
-
-# 4. Restore from the backup into a new volume via the Longhorn UI:
-#    Backup → Restore → name=${VOL}-restored → Storage Class=longhorn
-#    Then repoint the PVC at the restored volume:
-kubectl -n jupyterhub patch pvc $PVC --type=merge -p "{\"spec\":{\"volumeName\":\"${VOL}-restored\"}}"
-
-# 5. User restarts server from JupyterHub admin → KubeSpawner re-attaches.
-```
-
-### Scenario B — full DR, fresh cluster
-
-A fresh Longhorn install pointed at the same S3 bucket auto-discovers existing backups (pure metadata; no block transfer until restore).
+The UI is ClusterIP-only by default. Port-forward in a separate terminal:
 
 ```bash
-# 1. New cluster up; Longhorn installed; BackupTarget pointed at SAME bucket as the old cluster.
-kubectl -n longhorn-system get backupvolumes.longhorn.io   # should list per-user volumes within one poll cycle (default 5m)
-
-# 2. For each user that needs restore, create a Volume from the latest backup
-#    (Longhorn UI: Backup → Restore. Scriptable via the Longhorn API for many users.)
-
-# 3. Bind a PVC to the restored Volume in the JupyterHub namespace:
-kubectl apply -f - <<'EOF'
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: claim-tpotts
-  namespace: jupyterhub
-spec:
-  accessModes: [ReadWriteOnce]
-  resources: { requests: { storage: 10Gi } }
-  storageClassName: longhorn
-  volumeName: <restored-volume-name>
-EOF
-
-# 4. JupyterHub: spawn user servers as normal. (Hub DB is gone if you didn't back it up,
-#    so server-state — last-active timestamps, named servers — resets. File data is intact.)
+kubectl -n longhorn-system port-forward svc/longhorn-frontend 8080:80
+# → http://localhost:8080
 ```
 
-### DR gotchas
+### Restoring an RWO volume
 
-1. **No automatic PVC re-binding.** Restore creates a Longhorn `Volume`; you still issue PVC manifests with `volumeName: <restored>`.
-2. **In-flight backup locks.** If the source cluster died mid-backup, a stale lock in `backupstore/lock/` may persist. Reads work; new writes may complain until the lock is removed (`mc rm`).
-3. **Two clusters → one bucket = corruption.** If the "destroyed" cluster comes back to life mid-DR, both clusters writing to the same `backupstore/` will corrupt each other's metadata. Rotate the bucket prefix or credential before declaring the new cluster authoritative.
+Example: `claim-tpotts` (a user home directory) in namespace `jupyterhub`.
 
-### RWX-specific gotchas (shared storage)
+1. **Stop the workload** so the PVC can be released cleanly.
+   ```bash
+   kubectl -n jupyterhub get pod -l hub.jupyter.org/username=tpotts -o name | xargs -r kubectl delete
+   ```
 
-- The Longhorn share-manager pod is a single-replica Deployment fronting the underlying RWO volume. **No user pod can mount the shared volume until the share-manager is `Ready`.** On restore, restore the RWX volume first, wait for the share-manager pod to come up, then let users spawn.
-- Snapshots target the underlying RWO volume, not the NFS export. Active writes through NFS are subject to write-back caching; snapshotting mid-write may miss the last few hundred ms of buffered writes. Quiesce the share-manager first if you need stricter consistency.
+2. **Delete the PVC.** With the default `Delete` reclaim policy on the `longhorn` StorageClass, this cascades to the PV and the underlying Longhorn Volume.
+   ```bash
+   kubectl -n jupyterhub delete pvc claim-tpotts
+   ```
+   If a chart or ArgoCD Application declares this PVC with `selfHeal: true`, temporarily disable auto-sync for that release first — otherwise the PVC will be recreated blank within the next reconcile.
+
+3. **Restore in the Longhorn UI.**
+   - **Backup** in the left sidebar → find the row for the deleted source volume (named `pvc-<UUID>`); expand it.
+   - Click the **timestamp** of the backup you want.
+   - Click **Restore Latest Backup** (or, in the dropdown of an older row, **Restore**).
+   - Fill in:
+     - **Name**: any new identifier, e.g. `claim-tpotts-restored`. This becomes the new Longhorn Volume name.
+     - **Number of Replicas**: typically `3`.
+     - **Access Mode**: **`ReadWriteOnce`**.
+     - Other fields: leave at defaults.
+   - **OK**. Wait for the new volume to reach **`Detached`** in the **Volume** tab (seconds to minutes, depending on backup size).
+
+4. **Re-expose the restored volume as a PV/PVC.**
+   - Open the restored volume's detail page (click its name in **Volume**).
+   - Click **Create PV/PVC** in the top-right.
+   - **PV Name**: any identifier, e.g. `pv-claim-tpotts-restored`.
+   - **PVC Name**: `claim-tpotts` — **must exactly match the original PVC name**.
+   - **Namespace**: `jupyterhub` — **must exactly match the original namespace**.
+   - **Access Mode**: ReadWriteOnce.
+   - **OK**.
+
+5. **Verify and restart the workload.**
+   ```bash
+   kubectl -n jupyterhub get pvc claim-tpotts             # STATUS=Bound
+   ```
+   Spawn the user's server from the JupyterHub UI — KubeSpawner re-attaches the (now restored) PVC.
+
+### Restoring an RWX volume (shared storage)
+
+Same overall flow as RWO, with two differences:
+
+- **Access Mode** in both the restore dialog and the Create PV/PVC dialog must be **`ReadWriteMany`**.
+- A Longhorn **share-manager** pod (NFS frontend) must reach `Ready` before any consumer pod can mount the volume.
+
+Example: `shared-storage` PVC in `jupyterhub`.
+
+1. **Stop every workload using the shared volume** (e.g. all singleuser pods).
+2. **Delete the PVC:**
+   ```bash
+   kubectl -n jupyterhub delete pvc shared-storage
+   ```
+3. **Restore in the Longhorn UI** (same as RWO step 3), with **Access Mode = `ReadWriteMany`**.
+4. **Create PV/PVC** (same as RWO step 4):
+   - **PVC Name**: `shared-storage`
+   - **Namespace**: `jupyterhub`
+   - **Access Mode**: ReadWriteMany
+5. **Wait for the share-manager** to come up (30–60 seconds typically):
+   ```bash
+   kubectl -n longhorn-system get sharemanagers.longhorn.io
+   # Wait until the entry for the restored volume shows STATE=running
+   ```
+6. **Spawn a consumer workload to verify.** Inside the pod:
+   ```bash
+   mount | grep nfs    # should show the NFS mount on /shared/<...>
+   ```
+
+### Full DR — fresh cluster, same S3 bucket
+
+A fresh Longhorn install pointed at the same `backupTargetURL` and credentials auto-discovers existing backups within one poll cycle (default 5 min). Then:
+
+1. Confirm discovery:
+   ```bash
+   kubectl -n longhorn-system get backupvolumes.longhorn.io
+   ```
+2. For each volume to restore, follow the RWO or RWX flow above. Re-use the same PVC name and namespace from the original cluster so workloads bind without manual intervention.
+3. JupyterHub: spawn user servers as normal. File data is intact; the hub DB resets unless it was also backed up.
+
+### Gotchas
+
+- **Stop the workload first.** Deleting a PVC while a pod still mounts it hangs on `pvc-protection` until the consumer is gone.
+- **PVC name + namespace must match exactly.** Kubernetes binds PVCs to PVs by `(name, namespace)`, not UUID — any mismatch orphans the new PV.
+- **ArgoCD `selfHeal` vs PVC delete.** If the PVC is declared in a chart that ArgoCD manages with `selfHeal: true`, ArgoCD will recreate it blank within ~3 min. Either disable auto-sync on that Application during the restore, or race ArgoCD by completing steps 3–4 quickly.
+- **In-flight backup locks.** If the source cluster died mid-backup, a stale lock in `backupstore/lock/` may persist. Reads work; new writes complain until the lock is removed (`mc rm`).
+- **Two clusters → one bucket = corruption.** If the "destroyed" cluster comes back to life mid-DR, both clusters writing to the same `backupstore/` will corrupt each other's metadata. Rotate the bucket prefix or credential before declaring the new cluster authoritative.
+
+### RWX-specific notes
+
+- The Longhorn share-manager pod is a single-replica Deployment fronting the underlying RWO volume. Snapshots target the underlying RWO volume, not the NFS export — active writes through NFS are subject to write-back caching, so snapshotting mid-write may miss the last few hundred ms of buffered writes. Quiesce the share-manager first if you need stricter consistency.
+- **Node prerequisites for RWX consumers**: each Kubernetes node that runs a pod mounting an RWX volume needs `nfs-common` (or the equivalent for your distro) installed, with the `nfs`/`nfsv4` kernel modules loadable. If you see `mount: bad option; for several filesystems (e.g. nfs, cifs) you might need a /sbin/mount.<type> helper program` in pod events, the node is missing the NFS client.
 
 ## Development
 
